@@ -15,6 +15,18 @@ android {
             signingConfig = signingConfigs.getByName("debug") // so you can install it without your own keystore
         }
     }
+
+    applicationVariants.all {
+        val variantName = name
+        val versionName = versionName ?: "1.0"
+        val versionCode = versionCode ?: 1
+        
+        outputs.all {
+            if (this is com.android.build.gradle.internal.api.BaseVariantOutputImpl) {
+                this.outputFileName = "RelayControl_v${versionName}_${versionCode}_${variantName}.apk"
+            }
+        }
+    }
 }
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2024.09.00"))
