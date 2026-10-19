@@ -1,0 +1,5 @@
+<resources>
+    <style name="Theme.Relay" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">#E4E5EC</item>
+    </style>
+</resources>

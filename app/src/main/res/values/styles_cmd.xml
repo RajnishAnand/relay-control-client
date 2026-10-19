@@ -1,0 +1,3 @@
+<resources>
+    <style name="Theme.Relay.Transparent" parent="android:Theme.Translucent.NoTitleBar"/>
+</resources>

@@ -1,0 +1,5 @@
+<resources>
+    <style name="Theme.Relay" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#1F2025</item>
+    </style>
+</resources>

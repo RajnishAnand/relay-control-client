@@ -1,0 +1,26 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <application android:label="Relay Control" android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher" android:usesCleartextTraffic="true"
+        android:theme="@style/Theme.Relay">
+        <meta-data android:name="com.google.mlkit.vision.DEPENDENCIES" android:value="barcode_ui"/>
+        <activity android:name=".MainActivity" android:exported="true">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity>
+        <!-- Invisible command entry point (assistants, shortcuts, Tasker/MacroDroid, NFC). Not BROWSABLE on purpose. -->
+        <activity android:name=".CommandActivity" android:exported="true"
+            android:theme="@style/Theme.Relay.Transparent" android:excludeFromRecents="true"
+            android:noHistory="true" android:taskAffinity="">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:scheme="relay" android:host="cmd"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.relay.ctrl.COMMAND"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
