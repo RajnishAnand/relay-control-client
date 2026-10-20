@@ -1,6 +1,7 @@
 package com.relay.ctrl
 import android.app.TimePickerDialog
-import androidx.compose.animation.core.*
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -8,15 +9,14 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -25,8 +25,10 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
+import kotlinx.coroutines.launch
+
+// ---------- small building blocks (orange is reserved for the ON state) ----------
 
 @Composable
 fun Modifier.tap(onClick: () -> Unit) = this.clickable(remember { MutableInteractionSource() }, null, onClick = onClick)
@@ -35,65 +37,39 @@ fun Modifier.tap(onClick: () -> Unit) = this.clickable(remember { MutableInterac
 fun NeuButton(label: String, modifier: Modifier = Modifier, accent: Boolean = false, onClick: () -> Unit) {
     val p = LocalPal.current
     val src = remember { MutableInteractionSource() }; val down by src.collectIsPressedAsState()
-    Box(modifier.neu(14.dp, 4.dp, down).clickable(src, null, onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp), Alignment.Center) {
-        Text(label, color = if (accent) p.accent else p.txt, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+    Box(modifier.neu(14.dp, 4.dp, down).clickable(src, null, onClick = onClick).padding(horizontal = 14.dp, vertical = 10.dp), Alignment.Center) {
+        Text(label, color = p.txt, fontWeight = if (accent) FontWeight.Bold else FontWeight.Medium, fontSize = 13.sp)
     }
 }
 
 @Composable
-fun PowerGlyph(on: Boolean, sz: Dp = 22.dp) {
-    val p = LocalPal.current; val col = if (on) p.accent else p.dim
-    Canvas(Modifier.size(sz)) {
-        val w = size.width * 0.1f
-        drawArc(col, -55f, 290f, false, Offset(w, w), Size(size.width - 2 * w, size.height - 2 * w), style = Stroke(w, cap = StrokeCap.Round))
-        drawLine(col, Offset(size.width / 2, w), Offset(size.width / 2, size.height * 0.45f), w, StrokeCap.Round)
-    }
-}
-
-/** Radar icon for network scanning; sweeps while scanning. */
-@Composable
-fun ScanIcon(spinning: Boolean, color: Color) {
-    val rot = if (spinning) rememberInfiniteTransition(label = "scan")
-        .animateFloat(0f, 360f, infiniteRepeatable(tween(1200, easing = LinearEasing)), label = "a").value else 0f
-    Canvas(Modifier.size(22.dp).rotate(rot)) {
-        val c = center; val r = size.minDimension / 2; val w = r * 0.15f
-        drawCircle(color, r - w / 2, c, style = Stroke(w))
-        drawCircle(color, r * 0.5f, c, style = Stroke(w * 0.8f))
-        drawCircle(color, w, c)
-        drawLine(color, c, Offset(c.x + r * 0.66f, c.y - r * 0.66f), w * 0.8f, StrokeCap.Round)
-    }
-}
-
-@Composable
-fun TopBtn(onClick: () -> Unit, content: @Composable BoxScope.() -> Unit) =
-    Box(Modifier.size(42.dp).neuCircle(depth = 4.dp).tap(onClick), Alignment.Center, content = content)
-
-@Composable
-fun ReorderIcon(color: Color) {
-    Canvas(Modifier.size(18.dp)) {
-        val w = size.width; val h = size.height; val sw = w * 0.11f; val hd = w * 0.16f
-        val x1 = w * 0.3f; val x2 = w * 0.7f
-        drawLine(color, Offset(x1, h * 0.9f), Offset(x1, h * 0.1f), sw, StrokeCap.Round)
-        drawLine(color, Offset(x1, h * 0.1f), Offset(x1 - hd, h * 0.1f + hd), sw, StrokeCap.Round)
-        drawLine(color, Offset(x1, h * 0.1f), Offset(x1 + hd, h * 0.1f + hd), sw, StrokeCap.Round)
-        drawLine(color, Offset(x2, h * 0.1f), Offset(x2, h * 0.9f), sw, StrokeCap.Round)
-        drawLine(color, Offset(x2, h * 0.9f), Offset(x2 - hd, h * 0.9f - hd), sw, StrokeCap.Round)
-        drawLine(color, Offset(x2, h * 0.9f), Offset(x2 + hd, h * 0.9f - hd), sw, StrokeCap.Round)
-    }
-}
-
-@Composable
-fun KeyIcon(color: Color, size: Dp = 18.dp) {
+fun DotsIcon(color: Color, size: Dp = 20.dp) {
     Canvas(Modifier.size(size)) {
-        val w = this.size.width; val sw = w * 0.11f
-        val c = Offset(w * 0.3f, w * 0.3f); val r = w * 0.19f
-        drawCircle(color, r, c, style = Stroke(sw))
-        val a = Offset(c.x + r * 0.72f, c.y + r * 0.72f); val e = Offset(w * 0.9f, w * 0.9f)
-        drawLine(color, a, e, sw, StrokeCap.Round)
-        val k = w * 0.11f
-        for (t in listOf(0.55f, 0.82f)) {
-            val p = Offset(a.x + (e.x - a.x) * t, a.y + (e.y - a.y) * t)
-            drawLine(color, p, Offset(p.x + k, p.y - k), sw, StrokeCap.Round)
+        val r = this.size.width * 0.09f
+        for (i in -1..1) drawCircle(color, r, Offset(center.x, center.y + this.size.width * 0.28f * i))
+    }
+}
+
+@Composable
+fun ClockIcon(color: Color, size: Dp = 12.dp) {
+    Canvas(Modifier.size(size)) {
+        val w = this.size.width; val sw = w * 0.12f
+        drawCircle(color, w / 2 - sw / 2, center, style = Stroke(sw))
+        drawLine(color, center, Offset(center.x, w * 0.25f), sw, StrokeCap.Round)
+        drawLine(color, center, Offset(w * 0.7f, center.y), sw, StrokeCap.Round)
+    }
+}
+
+/** Big pill switch: inset track, raised knob that slides. A soft tint and dot show ON. */
+@Composable
+fun NeuSwitch(on: Boolean, enabled: Boolean) {
+    val p = LocalPal.current
+    val pos by animateFloatAsState(if (on) 1f else 0f, tween(180), label = "knob")
+    val w = 76.dp; val h = 42.dp; val k = 32.dp; val pad = 5.dp
+    Box(Modifier.size(w, h).alpha(if (enabled) 1f else 0.45f).neu(21.dp, 3.dp, true)
+        .background(p.accent.copy(alpha = 0.16f * pos), RoundedCornerShape(21.dp))) {
+        Box(Modifier.offset(x = pad + (w - k - pad * 2) * pos, y = pad).size(k).neuCircle(depth = 3.dp), Alignment.Center) {
+            Box(Modifier.size(8.dp).background(if (on) p.accent else p.dim.copy(alpha = 0.5f), CircleShape))
         }
     }
 }
@@ -102,9 +78,11 @@ fun KeyIcon(color: Color, size: Dp = 18.dp) {
 fun MoveBtn(label: String, enabled: Boolean, onClick: () -> Unit) {
     val p = LocalPal.current
     Box(Modifier.size(38.dp).neuCircle(depth = 4.dp).tap { if (enabled) onClick() }, Alignment.Center) {
-        Text(label, color = if (enabled) p.accent else p.dim.copy(alpha = .4f), fontSize = 14.sp)
+        Text(label, color = if (enabled) p.txt else p.dim.copy(alpha = .4f), fontSize = 14.sp)
     }
 }
+
+// ---------- switch tile ----------
 
 @Composable
 fun RelayTile(base: String, i: Int, r: Relay, vm: Vm, live: Boolean, reorder: Boolean,
@@ -113,31 +91,26 @@ fun RelayTile(base: String, i: Int, r: Relay, vm: Vm, live: Boolean, reorder: Bo
     val haptic = LocalHapticFeedback.current
     var cfg by remember { mutableStateOf(false) }
     val toggle = { if (live && !reorder) { haptic.performHapticFeedback(HapticFeedbackType.LongPress); vm.set(base, i, !r.state) } }
-    Row(modifier.neu(20.dp, 5.dp).tap { toggle() }.heightIn(min = 84.dp).padding(horizontal = 14.dp, vertical = 12.dp),
+    Row(modifier.neu(22.dp, 6.dp).tap { toggle() }.heightIn(min = 92.dp).padding(horizontal = 18.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Row(verticalAlignment = Alignment.Top) {
-                Text(r.name, Modifier.weight(1f), color = p.txt, fontSize = 17.sp, fontWeight = FontWeight.Bold, lineHeight = 20.sp, maxLines = 3)
-                if (!reorder) Text("⚙", Modifier.tap { cfg = true }.padding(start = 8.dp, end = 4.dp), color = p.dim, fontSize = 18.sp)
+                Text(r.name, Modifier.weight(1f, fill = false), color = p.txt, fontSize = 17.sp, fontWeight = FontWeight.Bold,
+                    lineHeight = 21.sp, maxLines = 3)
+                if (!reorder) Box(Modifier.tap { cfg = true }.padding(horizontal = 8.dp, vertical = 2.dp)) { DotsIcon(p.dim) }
             }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("IN${i + 1}", color = p.dim, fontSize = 10.sp)
-                if (r.sched) Text("▲ ${r.on}   ▼ ${r.off}", Modifier.neu(8.dp, 2.dp, true).padding(horizontal = 8.dp, vertical = 2.dp),
-                    color = p.accent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            Text(if (!live) "Unavailable" else if (r.state) "On" else "Off",
+                color = if (live && r.state) p.accent else p.dim, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            if (r.sched) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                ClockIcon(p.dim)
+                Text("${r.on} – ${r.off}", color = p.dim, fontSize = 11.sp)
             }
         }
         Spacer(Modifier.width(14.dp))
         if (reorder) Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             MoveBtn("▲", canUp) { onMove(-1) }
             MoveBtn("▼", canDown) { onMove(1) }
-        } else Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Box(Modifier.size(60.dp)
-                .then(if (r.state) Modifier.drawBehind {
-                    drawCircle(Brush.radialGradient(listOf(p.accent.copy(.4f), Color.Transparent)), size.minDimension * .75f)
-                } else Modifier)
-                .neuCircle(r.state, 6.dp), Alignment.Center) { PowerGlyph(r.state && live, 30.dp) }
-            Text(if (r.state) "ON" else "OFF", color = if (r.state) p.accent else p.dim, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-        }
+        } else NeuSwitch(r.state && live, live)
     }
     if (cfg) ConfigDialog(base, i, r, vm) { cfg = false }
 }
@@ -151,120 +124,180 @@ fun ConfigDialog(base: String, i: Int, r: Relay, vm: Vm, close: () -> Unit) {
     fun pick(cur: String, set: (String) -> Unit) = TimePickerDialog(ctx, { _, h, m -> set("%02d:%02d".format(h, m)) },
         cur.substringBefore(':').toInt(), cur.substringAfter(':').toInt(), true).show()
     AlertDialog(onDismissRequest = close, containerColor = p.bg,
-        title = { Text("Relay ${i + 1} settings", color = p.txt) },
+        title = { Text("Switch settings", color = p.txt) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
             OutlinedTextField(name, { v -> name = Api.clampName(v.filter { !it.isISOControl() }) },
                 label = { Text("Name") }, singleLine = true,
-                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = p.accent, focusedLabelColor = p.accent, cursorColor = p.accent))
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = p.txt, focusedLabelColor = p.txt, cursorColor = p.txt))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Daily schedule", color = p.txt, modifier = Modifier.weight(1f))
-                Switch(en, { en = it }, colors = SwitchDefaults.colors(checkedTrackColor = p.accent, checkedThumbColor = p.bg))
+                Switch(en, { en = it }, colors = SwitchDefaults.colors(checkedTrackColor = p.txt.copy(alpha = .8f), checkedThumbColor = p.bg))
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                NeuButton("ON  $on", Modifier.weight(1f), true) { pick(on) { on = it } }
-                NeuButton("OFF  $off", Modifier.weight(1f)) { pick(off) { off = it } }
+                NeuButton("Turn on  $on", Modifier.weight(1f)) { pick(on) { on = it } }
+                NeuButton("Turn off  $off", Modifier.weight(1f)) { pick(off) { off = it } }
             }
-            Text("Needs the device to have NTP time (internet). Runs daily, device local time.", color = p.dim, fontSize = 11.sp)
+            Text("Runs every day in the controller's local time. Needs the controller to have the correct time (internet).", color = p.dim, fontSize = 11.sp)
         } },
         confirmButton = { TextButton({
             if (name.isNotBlank() && name != r.name) vm.rename(base, i, name)
             if (en != r.sched || on != r.on || off != r.off) vm.schedule(base, i, en, on, off)
-            close() }) { Text("Save", color = p.accent) } },
+            close() }) { Text("Save", color = p.txt, fontWeight = FontWeight.Bold) } },
         dismissButton = { TextButton(close) { Text("Cancel", color = p.dim) } })
 }
 
+// ---------- one controller ----------
+
 @Composable
-fun DevicePage(d: Dev, order: List<Int>, vm: Vm, askAllOn: (String) -> Unit) {
-    val p = LocalPal.current
-    var reorder by remember { mutableStateOf(false) }
-    var token by remember { mutableStateOf(false) }
-    var upd by remember { mutableStateOf(false) }
+fun DevicePage(d: Dev, order: List<Int>, vm: Vm, reorder: Boolean, onDone: () -> Unit,
+               askAllOn: (String) -> Unit, askToken: (String) -> Unit) {
+    val p = LocalPal.current; val ctx = LocalContext.current
     val w = Modifier.widthIn(max = 600.dp).fillMaxWidth()
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 10.dp, vertical = 6.dp),
-        Arrangement.spacedBy(14.dp), Alignment.CenterHorizontally) {
-        Row(w, verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(8.dp).background(if (d.online) p.accent else p.dim, CircleShape))
-            Spacer(Modifier.width(8.dp))
-            Text(d.base.removePrefix("http://"), Modifier.weight(1f), color = p.dim, fontSize = 13.sp)
-            Box(Modifier.size(36.dp).neuCircle(depth = 4.dp).tap { token = true }, Alignment.Center) { KeyIcon(if (d.locked != null) p.accent else p.dim) }
-            if (d.relays.isNotEmpty() && d.locked == null) {
-                Spacer(Modifier.width(12.dp))
-                Box(Modifier.size(36.dp).neuCircle(reorder, 4.dp).tap { reorder = !reorder }, Alignment.Center) {
-                    ReorderIcon(if (reorder) p.accent else p.dim)
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp),
+        Arrangement.spacedBy(16.dp), Alignment.CenterHorizontally) {
+
+        Column(w.neu(22.dp, 6.dp).padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            when {
+                d.locked != null -> {
+                    Text("This controller needs its API token", color = p.txt, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text(d.locked, color = p.dim, fontSize = 12.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        NeuButton("Scan QR", Modifier.weight(1f), true) {
+                            scanQr(ctx, { vm.notify(it) }) { raw ->
+                                val pr = parsePairing(raw)
+                                if (pr == null) vm.notify("That QR code isn't an API token.") else vm.applyPairing(d.base, pr.first, pr.second)
+                            }
+                        }
+                        NeuButton("Enter token", Modifier.weight(1f)) { askToken(d.base) }
+                    }
+                }
+                !d.online -> {
+                    Text("Controller offline", color = p.txt, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text("${d.base.removePrefix("http://")} · trying again automatically", color = p.dim, fontSize = 12.sp)
+                    NeuButton("Remove this device") { vm.forget(d.base) }
+                }
+                else -> Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("${d.relays.count { it.state }} of ${d.relays.size} on", color = p.txt, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Text(d.base.removePrefix("http://"), color = p.dim, fontSize = 12.sp)
+                    }
+                    NeuButton("All off") { vm.allOff(d.base) }
+                    Spacer(Modifier.width(10.dp))
+                    NeuButton("All on") { askAllOn(d.base) }
                 }
             }
         }
-        if (d.online) Row(w, Arrangement.spacedBy(14.dp)) {
-            NeuButton("All ON", Modifier.weight(1f), true) { askAllOn(d.base) }
-            NeuButton("All OFF", Modifier.weight(1f)) { vm.allOff(d.base) }
-        } else if (d.locked == null) Text("offline  ✕", Modifier.tap { vm.forget(d.base) }.padding(8.dp), color = p.dim, fontSize = 12.sp)
-        d.locked?.let {
-            Text("$it. Tap the key icon to scan or enter the token.", w.padding(horizontal = 8.dp), color = Deep, fontSize = 13.sp, textAlign = TextAlign.Center)
+
+        if (reorder) Row(w.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Reorder: use ▲ ▼ on each switch", Modifier.weight(1f), color = p.dim, fontSize = 13.sp)
+            NeuButton("Done", accent = true) { onDone() }
         }
-        if (d.relays.isEmpty() && d.locked == null) Text("Connecting…", Modifier.padding(32.dp), color = p.dim)
+        if (d.online) d.info?.let { i ->
+            if (!i.synced && d.relays.any { it.sched })
+                Text("Clock not synced: schedules stay inactive until the controller gets the time.", w.padding(horizontal = 6.dp),
+                    color = Deep, fontSize = 12.sp)
+        }
+
         if (d.locked == null) order.forEachIndexed { pos, idx ->
             val r = d.relays.getOrNull(idx) ?: return@forEachIndexed
             RelayTile(d.base, idx, r, vm, d.online, reorder, pos > 0, pos < order.lastIndex, { vm.move(d.base, pos, it) }, w)
         }
-        if (d.online) d.info?.let { i ->
-            val needsClock = !i.synced && d.relays.any { it.sched }
-            Column(w.padding(top = 4.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                if (needsClock) Text("⚠ Clock not synced, schedules inactive", color = Deep, fontSize = 11.sp)
-                Text("Device firmware ${i.firmware}" + (if (i.rssi != 0) " · Wi-Fi ${i.rssi} dBm" else "") + "  ·  Updates ›",
-                    Modifier.tap { upd = true }.padding(8.dp), color = p.dim.copy(alpha = .8f), fontSize = 10.sp, textAlign = TextAlign.Center)
-            }
-        }
         Spacer(Modifier.height(8.dp))
     }
-    if (upd) UpdateDialog(d, vm) { upd = false }
-    if (token) TokenDialog(d.base, vm) { token = false }
 }
+
+// ---------- home ----------
+
+@Composable
+fun MenuItem(text: String, onClick: () -> Unit) =
+    DropdownMenuItem(text = { Text(text, color = LocalPal.current.txt) }, onClick = onClick)
 
 @Composable
 fun Home(s: Ui, vm: Vm) {
     val p = LocalPal.current
+    val scope = rememberCoroutineScope()
     var allOn by remember { mutableStateOf<String?>(null) }
     var manual by remember { mutableStateOf(false) }
     var defTok by remember { mutableStateOf(false) }
+    var tokenFor by remember { mutableStateOf<String?>(null) }
+    var updateFor by remember { mutableStateOf<String?>(null) }
+    var reorderFor by remember { mutableStateOf<String?>(null) }
+    var menu by remember { mutableStateOf(false) }
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val pager = rememberPagerState { s.devices.size.coerceAtLeast(1) }
+    val cur = s.devices.getOrNull(pager.currentPage)
     val totalOn = s.devices.sumOf { d -> d.relays.count { it.state } }
+
     Column(Modifier.fillMaxSize().statusBarsPadding().padding(horizontal = 20.dp).padding(top = 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Relay Control", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = p.txt)
-                Text(if (s.scanning) "Scanning network…" else "${s.devices.size} device${if (s.devices.size == 1) "" else "s"} · $totalOn on",
-                    color = p.dim, fontSize = 12.sp)
+                Text("Relay Control", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = p.txt)
+                Text(if (s.scanning) "Looking for controllers…"
+                     else "${s.devices.size} controller${if (s.devices.size == 1) "" else "s"} · $totalOn on", color = p.dim, fontSize = 13.sp)
             }
-            TopBtn({ defTok = true }) { KeyIcon(p.accent, 20.dp) }
-            Spacer(Modifier.width(14.dp))
-            TopBtn({ manual = true }) { Text("+", color = p.accent, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
-            Spacer(Modifier.width(14.dp))
-            TopBtn({ vm.scan() }) { ScanIcon(s.scanning, p.accent) }
-        }
-        s.msg?.let { Spacer(Modifier.height(8.dp)); Text(it, color = Deep, fontSize = 13.sp) }
-        Spacer(Modifier.height(10.dp))
-        if (s.devices.isEmpty()) Box(Modifier.fillMaxSize(), Alignment.Center) {
-            Text(if (s.scanning) "Searching your network…" else "No devices found.\nTap the radar to scan again, or add an IP with +",
-                color = p.dim, textAlign = TextAlign.Center)
-        } else {
-            val pager = rememberPagerState { s.devices.size }
-            HorizontalPager(pager, Modifier.weight(1f).fillMaxWidth(), key = { s.devices.getOrNull(it)?.base ?: it }) { page ->
-                s.devices.getOrNull(page)?.let { d -> DevicePage(d, s.orders[d.base] ?: listOf(0, 1, 2, 3), vm) { allOn = it } }
-            }
-            if (s.devices.size > 1) Row(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = navBottom + 8.dp), Arrangement.Center) {
-                repeat(s.devices.size) { n ->
-                    Box(Modifier.padding(horizontal = 4.dp).size(if (n == pager.currentPage) 10.dp else 7.dp)
-                        .background(if (n == pager.currentPage) p.accent else p.dim, CircleShape))
+            Box {
+                Box(Modifier.size(44.dp).neuCircle(depth = 4.dp).tap { menu = true }, Alignment.Center) { DotsIcon(p.txt) }
+                DropdownMenu(menu, { menu = false }, Modifier.background(p.bg)) {
+                    MenuItem("Scan network") { menu = false; vm.scan() }
+                    MenuItem("Add device by IP…") { menu = false; manual = true }
+                    MenuItem("API token (all devices)…") { menu = false; defTok = true }
+                    cur?.let { d ->
+                        val ip = d.base.removePrefix("http://")
+                        HorizontalDivider(color = p.dim.copy(alpha = .3f))
+                        if (d.online && d.locked == null) {
+                            MenuItem("Reorder switches") { menu = false; reorderFor = d.base }
+                            MenuItem("Firmware & updates…") { menu = false; updateFor = d.base }
+                        }
+                        MenuItem("Token for $ip…") { menu = false; tokenFor = d.base }
+                        if (!d.online) MenuItem("Remove $ip") { menu = false; vm.forget(d.base) }
+                    }
                 }
-            } else Spacer(Modifier.height(navBottom + 8.dp))
+            }
+        }
+        if (s.scanning) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 10.dp), color = p.dim, trackColor = Color.Transparent)
+        s.msg?.let { Spacer(Modifier.height(8.dp)); Text(it, color = Deep, fontSize = 13.sp) }
+
+        if (s.devices.isEmpty()) Box(Modifier.fillMaxSize(), Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.padding(24.dp)) {
+                Text(if (s.scanning) "Looking for controllers on your Wi-Fi…" else "No controllers found",
+                    color = p.txt, fontSize = 17.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                if (!s.scanning) {
+                    Text("Make sure your phone is on the same Wi-Fi as the relay board.", color = p.dim, fontSize = 13.sp, textAlign = TextAlign.Center)
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        NeuButton("Scan again", accent = true) { vm.scan() }
+                        NeuButton("Add by IP") { manual = true }
+                    }
+                }
+            }
+        } else {
+            if (s.devices.size > 1) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 14.dp),
+                Arrangement.spacedBy(14.dp)) {
+                s.devices.forEachIndexed { i, d ->
+                    val sel = i == pager.currentPage
+                    Box(Modifier.neu(14.dp, 3.dp, sel).tap { scope.launch { pager.animateScrollToPage(i) } }.padding(horizontal = 16.dp, vertical = 9.dp)) {
+                        Text("Controller ${d.base.substringAfterLast('.')}", color = if (sel) p.txt else p.dim,
+                            fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium, fontSize = 14.sp)
+                    }
+                }
+            }
+            HorizontalPager(pager, Modifier.weight(1f).fillMaxWidth(), key = { s.devices.getOrNull(it)?.base ?: it }) { page ->
+                s.devices.getOrNull(page)?.let { d ->
+                    DevicePage(d, s.orders[d.base] ?: listOf(0, 1, 2, 3), vm, reorderFor == d.base, { reorderFor = null },
+                        { allOn = it }, { tokenFor = it })
+                }
+            }
+            Spacer(Modifier.height(navBottom + 8.dp))
         }
     }
+
     if (defTok) TokenDialog(null, vm) { defTok = false }
+    tokenFor?.let { b -> TokenDialog(b, vm) { tokenFor = null } }
+    updateFor?.let { b -> s.devices.firstOrNull { it.base == b }?.let { d -> UpdateDialog(d, vm) { updateFor = null } } }
     allOn?.let { b ->
         AlertDialog(onDismissRequest = { allOn = null }, containerColor = p.bg,
             title = { Text("Turn everything on?", color = p.txt) },
-            text = { Text("The device switches relays on one at a time (about 0.4 s apart) to limit inrush. Check the connected loads are safe to power.", color = p.dim) },
-            confirmButton = { TextButton({ allOn = null; vm.allOn(b) }) { Text("Turn on", color = p.accent) } },
+            text = { Text("The controller switches relays on one at a time (about 0.4 s apart) to limit inrush. Check the connected loads are safe to power.", color = p.dim) },
+            confirmButton = { TextButton({ allOn = null; vm.allOn(b) }) { Text("Turn on", color = p.txt, fontWeight = FontWeight.Bold) } },
             dismissButton = { TextButton({ allOn = null }) { Text("Cancel", color = p.dim) } })
     }
     if (manual) {
@@ -273,8 +306,8 @@ fun Home(s: Ui, vm: Vm) {
             title = { Text("Add device by IP", color = p.txt) },
             text = { OutlinedTextField(ip, { ip = it.trim() }, singleLine = true, label = { Text("e.g. 192.168.1.250") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = p.accent, focusedLabelColor = p.accent, cursorColor = p.accent)) },
-            confirmButton = { TextButton({ if (ip.isNotBlank()) vm.add(ip); manual = false }) { Text("Add", color = p.accent) } },
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = p.txt, focusedLabelColor = p.txt, cursorColor = p.txt)) },
+            confirmButton = { TextButton({ if (ip.isNotBlank()) vm.add(ip); manual = false }) { Text("Add", color = p.txt, fontWeight = FontWeight.Bold) } },
             dismissButton = { TextButton({ manual = false }) { Text("Cancel", color = p.dim) } })
     }
 }

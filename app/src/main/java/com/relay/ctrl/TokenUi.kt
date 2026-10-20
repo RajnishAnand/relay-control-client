@@ -77,8 +77,8 @@ fun TokenDialog(base: String?, vm: Vm, close: () -> Unit) {
         text = { Column(Modifier.verticalScroll(rememberScrollState()), Arrangement.spacedBy(14.dp)) {
             OutlinedTextField(token, { token = it.trim(); err = null }, singleLine = true, label = { Text("Token") },
                 visualTransformation = if (reveal) VisualTransformation.None else PasswordVisualTransformation(),
-                trailingIcon = { Text(if (reveal) "hide" else "show", Modifier.tap { reveal = !reveal }.padding(8.dp), color = p.accent, fontSize = 12.sp) },
-                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = p.accent, focusedLabelColor = p.accent, cursorColor = p.accent))
+                trailingIcon = { Text(if (reveal) "hide" else "show", Modifier.tap { reveal = !reveal }.padding(8.dp), color = p.txt, fontSize = 12.sp) },
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = p.txt, focusedLabelColor = p.txt, cursorColor = p.txt))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 NeuButton("Scan QR", Modifier.weight(1f), true) {
                     scanQr(ctx, { err = it }) { raw ->
@@ -98,6 +98,6 @@ fun TokenDialog(base: String?, vm: Vm, close: () -> Unit) {
             err?.let { Text(it, color = Deep, fontSize = 12.sp) }
             Text("Sent as an X-API-Key header over plain HTTP. Save with an empty field to remove the token.", color = p.dim, fontSize = 11.sp)
         } },
-        confirmButton = { TextButton({ vm.setToken(base, token); close() }) { Text("Save", color = p.accent) } },
+        confirmButton = { TextButton({ vm.setToken(base, token); close() }) { Text("Save", color = p.txt) } },
         dismissButton = { TextButton(close) { Text("Cancel", color = p.dim) } })
 }

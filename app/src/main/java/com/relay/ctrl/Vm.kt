@@ -71,6 +71,7 @@ class Vm(private val app: Application) : AndroidViewModel(app) {
         val k = prefs.getStringSet("known", emptySet())!!.toMutableSet()
         if (k.add(b)) prefs.edit().putStringSet("known", k).apply()
     }
+    fun notify(m: String) = say(m)
     private fun say(m: String) {
         _s.update { it.copy(msg = m) }
         viewModelScope.launch { delay(4000); _s.update { u -> if (u.msg == m) u.copy(msg = null) else u } }

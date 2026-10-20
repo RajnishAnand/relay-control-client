@@ -55,13 +55,14 @@ fun UpdateDialog(d: Dev, vm: Vm, close: () -> Unit) {
         title = { Text("Firmware · ${d.base.removePrefix("http://")}", color = p.txt) },
         text = { Column(Modifier.verticalScroll(rememberScrollState()), Arrangement.spacedBy(10.dp)) {
             val s = st
-            if (s == null) { if (err == null) CircularProgressIndicator(color = p.accent) }
+            if (s == null) { if (err == null) CircularProgressIndicator(color = p.txt) }
             else {
                 row("Installed", s.current)
+                d.info?.let { if (it.rssi != 0) row("Wi-Fi signal", "${it.rssi} dBm") }
                 if (s.latest.isNotBlank()) row("Latest", s.latest)
                 row("Status", stateText(s.state))
                 if (s.state == "downloading" || s.state == "verifying")
-                    LinearProgressIndicator(progress = { (s.progress / 100f).coerceIn(0f, 1f) }, color = p.accent, trackColor = p.lo)
+                    LinearProgressIndicator(progress = { (s.progress / 100f).coerceIn(0f, 1f) }, color = p.txt, trackColor = p.lo)
                 if (s.message.isNotBlank()) Text(s.message, color = p.dim, fontSize = 12.sp)
                 if (s.pendingConfirm) Text("The new firmware is confirming itself after the restart (about 90 s).", color = p.dim, fontSize = 12.sp)
                 if (s.lastCheckSecondsAgo >= 0) Text("Last checked ${ago(s.lastCheckSecondsAgo)}", color = p.dim, fontSize = 11.sp)
@@ -73,11 +74,11 @@ fun UpdateDialog(d: Dev, vm: Vm, close: () -> Unit) {
             }
             err?.let { Text(it, color = Deep, fontSize = 12.sp) }
         } },
-        confirmButton = { TextButton(close) { Text("Close", color = p.accent) } })
+        confirmButton = { TextButton(close) { Text("Close", color = p.txt) } })
 
     if (confirm) AlertDialog(onDismissRequest = { confirm = false }, containerColor = p.bg,
         title = { Text("Install update?", color = p.txt) },
         text = { Text("The device will restart and every relay will switch off for several seconds. Make sure the connected loads can handle that, and don't unplug the device during the update.", color = p.dim) },
-        confirmButton = { TextButton({ confirm = false; act { Api.updateApply(d.base) } }) { Text("Install", color = p.accent) } },
+        confirmButton = { TextButton({ confirm = false; act { Api.updateApply(d.base) } }) { Text("Install", color = p.txt) } },
         dismissButton = { TextButton({ confirm = false }) { Text("Cancel", color = p.dim) } })
 }
