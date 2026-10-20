@@ -13,12 +13,15 @@ data class Relay(val name: String, val state: Boolean, val sched: Boolean, val o
 data class Info(val firmware: String, val synced: Boolean, val rssi: Int, val ip: String)
 data class Found(val base: String, val relays: List<Relay>, val locked: String? = null)
 class ApiAuthException(msg: String) : Exception(msg)
+data class UpdateStatus(val current: String, val configured: Boolean, val state: String, val latest: String,
+                        val progress: Int, val message: String, val pendingConfirm: Boolean, val lastCheckSecondsAgo: Int)
 
 object Api {
-    private fun get(base: String, path: String, t: Int): String {
+    private fun get(base: String, path: String, t: Int, method: String = "GET"): String {
         val c = URL(base + path).openConnection() as HttpURLConnection
         c.connectTimeout = t; c.readTimeout = t
         Tokens.forBase(base)?.let { c.setRequestProperty("X-API-Key", it) }
+        if (method == "POST") { c.requestMethod = "POST"; c.doOutput = true; c.setFixedLengthStreamingMode(0); c.outputStream.close() }
         try {
             val code = c.responseCode
             val body = (if (code < 400) c.inputStream else c.errorStream)?.bufferedReader()?.readText().orEmpty()
@@ -39,6 +42,16 @@ object Api {
         val o = JSONObject(get(b, "/api/info", 2500)); val w = o.optJSONObject("wifi"); val t = o.optJSONObject("time")
         Info(o.optString("firmware"), t?.optBoolean("synced") ?: false, w?.optInt("rssi") ?: 0, w?.optString("ip").orEmpty())
     }
+    private fun JSONObject.str(k: String) = if (isNull(k)) "" else optString(k)
+    suspend fun updateStatus(b: String): UpdateStatus = withContext(Dispatchers.IO) {
+        val o = JSONObject(get(b, "/api/update/status", 2500))
+        UpdateStatus(o.str("current"), o.optBoolean("configured"), o.str("state"), o.str("latest"), o.optInt("progress"),
+            o.str("message"), o.optBoolean("pendingConfirm"), o.optInt("lastCheckSecondsAgo", -1))
+    }
+    suspend fun updateCheck(b: String) { withContext(Dispatchers.IO) { get(b, "/api/update/check", 2500, "POST") } }
+    /** Reboots the device: every relay drops for several seconds. Only call after explicit user confirmation. */
+    suspend fun updateApply(b: String) { withContext(Dispatchers.IO) { get(b, "/api/update/apply", 2500, "POST") } }
+
     private suspend fun verify(b: String, ok: (List<Relay>) -> Boolean): List<Relay> {
         val r = status(b); if (!ok(r)) throw IllegalStateException("Device did not confirm the change"); return r
     }

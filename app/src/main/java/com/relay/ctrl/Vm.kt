@@ -19,6 +19,7 @@ class Vm(private val app: Application) : AndroidViewModel(app) {
     private val active = MutableStateFlow(true)
     private val prefs = app.getSharedPreferences("p", 0)
     private fun lock(b: String) = locks.getOrPut(b) { Mutex() }
+    suspend fun <T> withDevice(b: String, f: suspend () -> T): T = lock(b).withLock { f() }
     fun setActive(a: Boolean) { active.value = a }   // no network traffic while the app is in the background
 
     init {

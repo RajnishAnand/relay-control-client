@@ -83,6 +83,22 @@ fun ReorderIcon(color: Color) {
 }
 
 @Composable
+fun KeyIcon(color: Color, size: Dp = 18.dp) {
+    Canvas(Modifier.size(size)) {
+        val w = this.size.width; val sw = w * 0.11f
+        val c = Offset(w * 0.3f, w * 0.3f); val r = w * 0.19f
+        drawCircle(color, r, c, style = Stroke(sw))
+        val a = Offset(c.x + r * 0.72f, c.y + r * 0.72f); val e = Offset(w * 0.9f, w * 0.9f)
+        drawLine(color, a, e, sw, StrokeCap.Round)
+        val k = w * 0.11f
+        for (t in listOf(0.55f, 0.82f)) {
+            val p = Offset(a.x + (e.x - a.x) * t, a.y + (e.y - a.y) * t)
+            drawLine(color, p, Offset(p.x + k, p.y - k), sw, StrokeCap.Round)
+        }
+    }
+}
+
+@Composable
 fun MoveBtn(label: String, enabled: Boolean, onClick: () -> Unit) {
     val p = LocalPal.current
     Box(Modifier.size(38.dp).neuCircle(depth = 4.dp).tap { if (enabled) onClick() }, Alignment.Center) {
@@ -162,6 +178,7 @@ fun DevicePage(d: Dev, order: List<Int>, vm: Vm, askAllOn: (String) -> Unit) {
     val p = LocalPal.current
     var reorder by remember { mutableStateOf(false) }
     var token by remember { mutableStateOf(false) }
+    var upd by remember { mutableStateOf(false) }
     val w = Modifier.widthIn(max = 600.dp).fillMaxWidth()
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 10.dp, vertical = 6.dp),
         Arrangement.spacedBy(14.dp), Alignment.CenterHorizontally) {
@@ -169,7 +186,7 @@ fun DevicePage(d: Dev, order: List<Int>, vm: Vm, askAllOn: (String) -> Unit) {
             Box(Modifier.size(8.dp).background(if (d.online) p.accent else p.dim, CircleShape))
             Spacer(Modifier.width(8.dp))
             Text(d.base.removePrefix("http://"), Modifier.weight(1f), color = p.dim, fontSize = 13.sp)
-            Box(Modifier.size(36.dp).neuCircle(depth = 4.dp).tap { token = true }, Alignment.Center) { Text("🔑", fontSize = 15.sp) }
+            Box(Modifier.size(36.dp).neuCircle(depth = 4.dp).tap { token = true }, Alignment.Center) { KeyIcon(if (d.locked != null) p.accent else p.dim) }
             if (d.relays.isNotEmpty() && d.locked == null) {
                 Spacer(Modifier.width(12.dp))
                 Box(Modifier.size(36.dp).neuCircle(reorder, 4.dp).tap { reorder = !reorder }, Alignment.Center) {
@@ -182,19 +199,24 @@ fun DevicePage(d: Dev, order: List<Int>, vm: Vm, askAllOn: (String) -> Unit) {
             NeuButton("All OFF", Modifier.weight(1f)) { vm.allOff(d.base) }
         } else if (d.locked == null) Text("offline  ✕", Modifier.tap { vm.forget(d.base) }.padding(8.dp), color = p.dim, fontSize = 12.sp)
         d.locked?.let {
-            Text("$it. Tap 🔑 to scan or enter the token.", w.padding(horizontal = 8.dp), color = Deep, fontSize = 13.sp, textAlign = TextAlign.Center)
-        }
-        d.info?.let { i ->
-            val line = "fw ${i.firmware}" + (if (i.rssi != 0) " · ${i.rssi} dBm" else "") + (if (!i.synced) "  ⚠ clock not synced, schedules inactive" else "")
-            Text(line, color = if (i.synced) p.dim else Deep, fontSize = 10.sp)
+            Text("$it. Tap the key icon to scan or enter the token.", w.padding(horizontal = 8.dp), color = Deep, fontSize = 13.sp, textAlign = TextAlign.Center)
         }
         if (d.relays.isEmpty() && d.locked == null) Text("Connecting…", Modifier.padding(32.dp), color = p.dim)
         if (d.locked == null) order.forEachIndexed { pos, idx ->
             val r = d.relays.getOrNull(idx) ?: return@forEachIndexed
             RelayTile(d.base, idx, r, vm, d.online, reorder, pos > 0, pos < order.lastIndex, { vm.move(d.base, pos, it) }, w)
         }
+        if (d.online) d.info?.let { i ->
+            val needsClock = !i.synced && d.relays.any { it.sched }
+            Column(w.padding(top = 4.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                if (needsClock) Text("⚠ Clock not synced, schedules inactive", color = Deep, fontSize = 11.sp)
+                Text("Device firmware ${i.firmware}" + (if (i.rssi != 0) " · Wi-Fi ${i.rssi} dBm" else "") + "  ·  Updates ›",
+                    Modifier.tap { upd = true }.padding(8.dp), color = p.dim.copy(alpha = .8f), fontSize = 10.sp, textAlign = TextAlign.Center)
+            }
+        }
         Spacer(Modifier.height(8.dp))
     }
+    if (upd) UpdateDialog(d, vm) { upd = false }
     if (token) TokenDialog(d.base, vm) { token = false }
 }
 
@@ -213,7 +235,7 @@ fun Home(s: Ui, vm: Vm) {
                 Text(if (s.scanning) "Scanning network…" else "${s.devices.size} device${if (s.devices.size == 1) "" else "s"} · $totalOn on",
                     color = p.dim, fontSize = 12.sp)
             }
-            TopBtn({ defTok = true }) { Text("🔑", fontSize = 18.sp) }
+            TopBtn({ defTok = true }) { KeyIcon(p.accent, 20.dp) }
             Spacer(Modifier.width(14.dp))
             TopBtn({ manual = true }) { Text("+", color = p.accent, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
             Spacer(Modifier.width(14.dp))
