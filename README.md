@@ -5,7 +5,7 @@
 **A native Android dashboard for your ESP32 4-channel relay controller.**
 Finds your devices on its own, switches relays in one tap, and wears a dark/light neumorphic skin with orange accents.
 
-[![Android CI](https://github.com/OWNER/REPO/actions/workflows/android.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/android.yml)
+[![Android Release](https://github.com/RajnishAnand/relay-control-client/actions/workflows/android-release.yml/badge.svg)](https://github.com/RajnishAnand/relay-control-client/actions/workflows/android-release.yml)
 ![Platform](https://img.shields.io/badge/platform-Android%209%2B-3DDC84?logo=android&logoColor=white)
 ![Min SDK](https://img.shields.io/badge/minSdk-28-orange)
 ![Kotlin](https://img.shields.io/badge/Kotlin-1.9.24-7F52FF?logo=kotlin&logoColor=white)
@@ -53,7 +53,7 @@ schedule them.
 
 ### Build
 ```bash
-git clone https://github.com/OWNER/REPO.git
+git clone https://github.com/RajnishAnand/relay-control-client.git
 cd REPO
 ./gradlew assembleDebug      # app/build/outputs/apk/debug/
 ./gradlew assembleRelease    # smaller, shrunk APK: app/build/outputs/apk/release/
@@ -147,4 +147,4 @@ Issues and pull requests are welcome. Please make sure `./gradlew assembleReleas
 
 ## 📄 License
 
-MIT. Replace `OWNER/REPO` in the badges and links above with your repository path.
+MIT. Replace `RajnishAnand/relay-control-client` in the badges and links above with your repository path.
