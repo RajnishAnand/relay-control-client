@@ -9,7 +9,9 @@ import java.util.concurrent.ConcurrentHashMap
 
 data class Dev(val base: String, val relays: List<Relay>, val online: Boolean, val locked: String? = null, val info: Info? = null)
 data class Ui(val devices: List<Dev> = emptyList(), val scanning: Boolean = false, val msg: String? = null, val busy: Boolean = false,
-              val orders: Map<String, List<Int>> = emptyMap())
+              val orders: Map<String, List<Int>> = emptyMap(),
+              val appUpdate: AppRelease? = null, val appChecking: Boolean = false, val appUpdateNote: String? = null,
+              val appUpdateProgress: Float? = null)
 
 class Vm(private val app: Application) : AndroidViewModel(app) {
     private val _s = MutableStateFlow(Ui()); val s = _s.asStateFlow()
@@ -25,6 +27,10 @@ class Vm(private val app: Application) : AndroidViewModel(app) {
     init {
         Tokens.init(app)
         prefs.getStringSet("known", emptySet())!!.forEach { put(it, null, false) }
+        viewModelScope.launch {   // one GitHub request a day at most, silent on failure
+            delay(4000)
+            if (autoUpdateEnabled() && System.currentTimeMillis() - prefs.getLong("update_checked", 0L) > 24 * 3600 * 1000L) checkAppUpdate(false)
+        }
         viewModelScope.launch {
             var rounds = 0; var nextDiscover = 0L
             while (true) {
@@ -111,6 +117,42 @@ class Vm(private val app: Application) : AndroidViewModel(app) {
         val target = host?.let { if (it.startsWith("http")) it else "http://$it" } ?: scope
         setToken(target, key)
         if (host != null) add(host)
+    }
+
+    fun autoUpdateEnabled() = prefs.getBoolean("auto_update", true)
+    fun setAutoUpdate(on: Boolean) { prefs.edit().putBoolean("auto_update", on).apply() }
+
+    fun checkAppUpdate(manual: Boolean) {
+        if (_s.value.appChecking) return
+        _s.update { it.copy(appChecking = true, appUpdateNote = null) }
+        viewModelScope.launch {
+            try {
+                val r = AppUpdater.latest(app)
+                prefs.edit().putLong("update_checked", System.currentTimeMillis()).apply()
+                val cur = AppUpdater.installedVersion(app)
+                val newer = r != null && AppUpdater.isNewer(r.version, cur)
+                _s.update { it.copy(appUpdate = if (newer) r else null,
+                    appUpdateNote = if (!newer && manual) "You're up to date ($cur)." else null) }
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { if (manual) _s.update { it.copy(appUpdateNote = e.message ?: "Couldn't check for updates") } }
+            _s.update { it.copy(appChecking = false) }
+        }
+    }
+
+    fun downloadAndInstall() {
+        val r = _s.value.appUpdate ?: return
+        if (_s.value.appUpdateProgress != null) return
+        _s.update { it.copy(appUpdateProgress = 0f, appUpdateNote = null) }
+        viewModelScope.launch {
+            try {
+                val f = AppUpdater.download(app, r) { p -> _s.update { it.copy(appUpdateProgress = p) } }
+                _s.update { it.copy(appUpdateProgress = -1f) }
+                AppUpdater.install(app, f)
+                delay(30_000)   // if the installer never came up, let the user try again
+                _s.update { it.copy(appUpdateProgress = null) }
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { _s.update { it.copy(appUpdateProgress = null, appUpdateNote = e.message ?: "Update failed") } }
+        }
     }
 
     fun scan() { viewModelScope.launch { doScan(full = true, manual = true) } }

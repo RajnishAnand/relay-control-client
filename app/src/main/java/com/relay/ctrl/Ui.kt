@@ -34,7 +34,6 @@ import androidx.compose.ui.zIndex
 import java.util.Collections
 import kotlin.math.abs
 import kotlinx.coroutines.launch
-import androidx.compose.ui.draw.drawBehind
 
 // ---------- small building blocks (orange is reserved for the ON state) ----------
 
@@ -272,6 +271,7 @@ fun Home(s: Ui, vm: Vm) {
     var allOn by remember { mutableStateOf<String?>(null) }
     var manual by remember { mutableStateOf(false) }
     var defTok by remember { mutableStateOf(false) }
+    var appDlg by remember { mutableStateOf(false) }
     var tokenFor by remember { mutableStateOf<String?>(null) }
     var updateFor by remember { mutableStateOf<String?>(null) }
     var reorderFor by remember { mutableStateOf<String?>(null) }
@@ -294,6 +294,7 @@ fun Home(s: Ui, vm: Vm) {
                     MenuItem("Scan network") { menu = false; vm.scan() }
                     MenuItem("Add device by IP…") { menu = false; manual = true }
                     MenuItem("API token (all devices)…") { menu = false; defTok = true }
+                    MenuItem(if (s.appUpdate != null) "App updates… (new version)" else "App updates…") { menu = false; appDlg = true }
                     cur?.let { d ->
                         val ip = d.base.removePrefix("http://")
                         HorizontalDivider(color = p.dim.copy(alpha = .3f))
@@ -309,6 +310,13 @@ fun Home(s: Ui, vm: Vm) {
         }
         if (s.scanning) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 10.dp), color = p.dim, trackColor = Color.Transparent)
         s.msg?.let { Spacer(Modifier.height(8.dp)); Text(it, color = Deep, fontSize = 13.sp) }
+        s.appUpdate?.let { up ->
+            Row(Modifier.fillMaxWidth().padding(top = 12.dp).neu(16.dp, 4.dp).tap { appDlg = true }.padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Text("App update ${up.version} available", Modifier.weight(1f), color = p.txt, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text("View ›", color = p.dim, fontSize = 13.sp)
+            }
+        }
 
         if (s.devices.isEmpty()) Box(Modifier.fillMaxSize(), Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.padding(24.dp)) {
@@ -344,6 +352,7 @@ fun Home(s: Ui, vm: Vm) {
     }
 
     if (defTok) TokenDialog(null, vm) { defTok = false }
+    if (appDlg) AppUpdateDialog(s, vm) { appDlg = false }
     tokenFor?.let { b -> TokenDialog(b, vm) { tokenFor = null } }
     updateFor?.let { b -> s.devices.firstOrNull { it.base == b }?.let { d -> UpdateDialog(d, vm) { updateFor = null } } }
     allOn?.let { b ->
