@@ -26,6 +26,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.*
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.zIndex
+import java.util.Collections
+import kotlin.math.abs
 import kotlinx.coroutines.launch
 
 // ---------- small building blocks (orange is reserved for the ON state) ----------
@@ -60,25 +67,26 @@ fun ClockIcon(color: Color, size: Dp = 12.dp) {
     }
 }
 
-/** Big pill switch: inset track, raised knob that slides. A soft tint and dot show ON. */
+/** The round power button (glows softly when on). */
 @Composable
-fun NeuSwitch(on: Boolean, enabled: Boolean) {
-    val p = LocalPal.current
-    val pos by animateFloatAsState(if (on) 1f else 0f, tween(180), label = "knob")
-    val w = 76.dp; val h = 42.dp; val k = 32.dp; val pad = 5.dp
-    Box(Modifier.size(w, h).alpha(if (enabled) 1f else 0.45f).neu(21.dp, 3.dp, true)
-        .background(p.accent.copy(alpha = 0.16f * pos), RoundedCornerShape(21.dp))) {
-        Box(Modifier.offset(x = pad + (w - k - pad * 2) * pos, y = pad).size(k).neuCircle(depth = 3.dp), Alignment.Center) {
-            Box(Modifier.size(8.dp).background(if (on) p.accent else p.dim.copy(alpha = 0.5f), CircleShape))
-        }
+fun PowerGlyph(on: Boolean, sz: Dp = 32.dp) {
+    val p = LocalPal.current; val col = if (on) p.accent else p.dim
+    Canvas(Modifier.size(sz)) {
+        val w = this.size.width * 0.1f
+        drawArc(col, -55f, 290f, false, Offset(w, w), androidx.compose.ui.geometry.Size(this.size.width - 2 * w, this.size.height - 2 * w),
+            style = Stroke(w, cap = StrokeCap.Round))
+        drawLine(col, Offset(this.size.width / 2, w), Offset(this.size.width / 2, this.size.height * 0.45f), w, StrokeCap.Round)
     }
 }
 
 @Composable
-fun MoveBtn(label: String, enabled: Boolean, onClick: () -> Unit) {
-    val p = LocalPal.current
-    Box(Modifier.size(38.dp).neuCircle(depth = 4.dp).tap { if (enabled) onClick() }, Alignment.Center) {
-        Text(label, color = if (enabled) p.txt else p.dim.copy(alpha = .4f), fontSize = 14.sp)
+fun GripIcon(color: Color, size: Dp = 22.dp) {
+    Canvas(Modifier.size(size)) {
+        val sw = this.size.width * 0.1f
+        for (i in -1..1) {
+            val y = center.y + this.size.height * 0.26f * i
+            drawLine(color, Offset(this.size.width * 0.2f, y), Offset(this.size.width * 0.8f, y), sw, StrokeCap.Round)
+        }
     }
 }
 
@@ -86,10 +94,13 @@ fun MoveBtn(label: String, enabled: Boolean, onClick: () -> Unit) {
 
 @Composable
 fun RelayTile(base: String, i: Int, r: Relay, vm: Vm, live: Boolean, reorder: Boolean,
-              canUp: Boolean, canDown: Boolean, onMove: (Int) -> Unit, modifier: Modifier) {
+              onDragStart: () -> Unit, onDrag: (Float) -> Unit, onDragEnd: () -> Unit, modifier: Modifier) {
     val p = LocalPal.current
     val haptic = LocalHapticFeedback.current
     var cfg by remember { mutableStateOf(false) }
+    val startS by rememberUpdatedState(onDragStart)
+    val dragS by rememberUpdatedState(onDrag)
+    val endS by rememberUpdatedState(onDragEnd)
     val toggle = { if (live && !reorder) { haptic.performHapticFeedback(HapticFeedbackType.LongPress); vm.set(base, i, !r.state) } }
     Row(modifier.neu(22.dp, 6.dp).tap { toggle() }.heightIn(min = 92.dp).padding(horizontal = 18.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically) {
@@ -107,10 +118,16 @@ fun RelayTile(base: String, i: Int, r: Relay, vm: Vm, live: Boolean, reorder: Bo
             }
         }
         Spacer(Modifier.width(14.dp))
-        if (reorder) Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            MoveBtn("▲", canUp) { onMove(-1) }
-            MoveBtn("▼", canDown) { onMove(1) }
-        } else NeuSwitch(r.state && live, live)
+        if (reorder) Box(Modifier.size(54.dp).neuCircle(depth = 4.dp).pointerInput(Unit) {
+            detectDragGestures(onDragStart = { startS() }, onDragEnd = { endS() }, onDragCancel = { endS() }) { change, amt ->
+                change.consume(); dragS(amt.y)
+            }
+        }, Alignment.Center) { GripIcon(p.txt) }
+        else Box(Modifier.size(64.dp)
+            .then(if (live && r.state) Modifier.drawBehind {
+                drawCircle(Brush.radialGradient(listOf(p.accent.copy(.35f), Color.Transparent)), size.minDimension * .8f)
+            } else Modifier)
+            .neuCircle(live && r.state, 6.dp), Alignment.Center) { PowerGlyph(live && r.state, 32.dp) }
     }
     if (cfg) ConfigDialog(base, i, r, vm) { cfg = false }
 }
@@ -153,6 +170,29 @@ fun DevicePage(d: Dev, order: List<Int>, vm: Vm, reorder: Boolean, onDone: () ->
                askAllOn: (String) -> Unit, askToken: (String) -> Unit) {
     val p = LocalPal.current; val ctx = LocalContext.current
     val w = Modifier.widthIn(max = 600.dp).fillMaxWidth()
+    // drag-to-reorder state: `work` is the order shown while dragging, saved when the finger lifts
+    var work by remember(order) { mutableStateOf(order) }
+    var dragging by remember { mutableStateOf<Int?>(null) }
+    var dragY by remember { mutableStateOf(0f) }
+    val heights = remember { mutableStateMapOf<Int, Int>() }
+    val gap = with(LocalDensity.current) { 16.dp.toPx() }
+
+    fun onDrag(idx: Int, dy: Float) {
+        dragY += dy
+        var pos = work.indexOf(idx)
+        while (pos >= 0) {
+            val down = dragY > 0
+            val next = work.getOrNull(if (down) pos + 1 else pos - 1) ?: break
+            val h = (heights[next] ?: 0) + gap
+            if (h <= gap) break
+            if (abs(dragY) <= 0.6f * h) break
+            val l = work.toMutableList(); Collections.swap(l, pos, if (down) pos + 1 else pos - 1); work = l
+            dragY += if (down) -h else h
+            pos += if (down) 1 else -1
+        }
+    }
+    fun endDrag() { if (work != order) vm.setOrder(d.base, work); dragging = null; dragY = 0f }
+
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp),
         Arrangement.spacedBy(16.dp), Alignment.CenterHorizontally) {
 
@@ -189,7 +229,7 @@ fun DevicePage(d: Dev, order: List<Int>, vm: Vm, reorder: Boolean, onDone: () ->
         }
 
         if (reorder) Row(w.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Reorder: use ▲ ▼ on each switch", Modifier.weight(1f), color = p.dim, fontSize = 13.sp)
+            Text("Hold the ≡ handle and drag a switch up or down", Modifier.weight(1f), color = p.dim, fontSize = 13.sp)
             NeuButton("Done", accent = true) { onDone() }
         }
         if (d.online) d.info?.let { i ->
@@ -198,9 +238,21 @@ fun DevicePage(d: Dev, order: List<Int>, vm: Vm, reorder: Boolean, onDone: () ->
                     color = Deep, fontSize = 12.sp)
         }
 
-        if (d.locked == null) order.forEachIndexed { pos, idx ->
-            val r = d.relays.getOrNull(idx) ?: return@forEachIndexed
-            RelayTile(d.base, idx, r, vm, d.online, reorder, pos > 0, pos < order.lastIndex, { vm.move(d.base, pos, it) }, w)
+        if (d.locked == null) work.forEach { idx ->
+            val r = d.relays.getOrNull(idx) ?: return@forEach
+            key(idx) {
+                val isDrag = dragging == idx
+                RelayTile(d.base, idx, r, vm, d.online, reorder,
+                    onDragStart = { dragging = idx; dragY = 0f },
+                    onDrag = { dy -> onDrag(idx, dy) },
+                    onDragEnd = { endDrag() },
+                    modifier = w.onSizeChanged { heights[idx] = it.height }
+                        .zIndex(if (isDrag) 1f else 0f)
+                        .graphicsLayer {
+                            translationY = if (isDrag) dragY else 0f
+                            scaleX = if (isDrag) 1.03f else 1f; scaleY = if (isDrag) 1.03f else 1f
+                        })
+            }
         }
         Spacer(Modifier.height(8.dp))
     }

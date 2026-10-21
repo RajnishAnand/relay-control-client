@@ -67,6 +67,13 @@ class Vm(private val app: Application) : AndroidViewModel(app) {
         _s.update { it.copy(orders = it.orders + (b to o)) }
     }
 
+    /** Saves the display order after a drag (UI-only; relay indices sent to the device never change). */
+    fun setOrder(b: String, o: List<Int>) {
+        if (o.sorted() != listOf(0, 1, 2, 3)) return
+        prefs.edit().putString("order:$b", o.joinToString(",")).apply()
+        _s.update { it.copy(orders = it.orders + (b to o)) }
+    }
+
     private fun save(b: String) {
         val k = prefs.getStringSet("known", emptySet())!!.toMutableSet()
         if (k.add(b)) prefs.edit().putStringSet("known", k).apply()
