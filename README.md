@@ -18,7 +18,7 @@ Finds your devices on its own, switches relays in one tap, and wears a dark/ligh
 
 ---
 
-## ✨ Overview
+## ✨ Overview 
 
 Relay Control talks to the HTTP API of an ESP32 relay board (4 channels, firmware in a separate repo). Open the app and it
 discovers controllers on your Wi-Fi, lists every switch with its full name, and lets you toggle, rename, reorder and
