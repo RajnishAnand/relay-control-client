@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+      App Actions: "Hey Google, open <switch name> in Relay Control".
+      OPEN_APP_FEATURE requires an inline inventory of feature names. The inventory is the list of your switches,
+      which you can rename, so it is pushed at runtime as dynamic shortcuts (see Shortcuts.kt) and bound to this capability.
+      Each pushed shortcut carries its own intent (relay://cmd?...), which Assistant/Gemini launches.
+    -->
+    <capability android:name="actions.intent.OPEN_APP_FEATURE">
+        <shortcut-fulfillment>
+            <parameter android:name="feature"/>
+        </shortcut-fulfillment>
+    </capability>
+</shortcuts>
