@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.*
 import java.util.concurrent.ConcurrentHashMap
 
-data class Dev(val base: String, val relays: List<Relay>, val online: Boolean, val locked: String? = null, val info: Info? = null)
+data class Dev(val base: String, val relays: List<Relay>, val online: Boolean, val locked: String? = null, val info: Info? = null, val role: String = "admin")
 data class Ui(val devices: List<Dev> = emptyList(), val scanning: Boolean = false, val msg: String? = null, val busy: Boolean = false,
               val orders: Map<String, List<Int>> = emptyMap(),
               val appUpdate: AppRelease? = null, val appChecking: Boolean = false, val appUpdateNote: String? = null,
@@ -18,6 +18,9 @@ class Vm(private val app: Application) : AndroidViewModel(app) {
     private val locks = ConcurrentHashMap<String, Mutex>()
     private val lastTry = ConcurrentHashMap<String, Long>()
     private val infoAt = ConcurrentHashMap<String, Long>()
+    private val fails = ConcurrentHashMap<String, Int>()
+    /** Devices that rejected our key: not polled again until the key changes (avoids tripping the guest-login lockout). */
+    private val authBlocked = ConcurrentHashMap.newKeySet<String>()
     private val active = MutableStateFlow(true)
     private val prefs = app.getSharedPreferences("p", 0)
     private fun lock(b: String) = locks.getOrPut(b) { Mutex() }
@@ -58,7 +61,7 @@ class Vm(private val app: Application) : AndroidViewModel(app) {
     private fun put(b: String, r: List<Relay>?, online: Boolean, locked: String? = null, info: Info? = null) = _s.update { u ->
         val i = u.devices.indexOfFirst { it.base == b }
         val old = u.devices.getOrNull(i)
-        val d = Dev(b, r ?: old?.relays ?: emptyList(), online, locked, info ?: old?.info)
+        val d = Dev(b, r ?: old?.relays ?: emptyList(), online, locked, info ?: old?.info, Api.roleOf(b) ?: old?.role ?: "admin")
         u.copy(devices = if (i < 0) (u.devices + d).sortedBy { it.base } else u.devices.toMutableList().also { it[i] = d },
             orders = if (u.orders.containsKey(b)) u.orders else u.orders + (b to loadOrder(b)))
     }
@@ -90,26 +93,33 @@ class Vm(private val app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { delay(4000); _s.update { u -> if (u.msg == m) u.copy(msg = null) else u } }
     }
 
-    /** Online devices every cycle (3 s); offline or locked ones only every 15 s. Device info once a minute. */
+    /** Online devices every cycle (3 s); offline or locked ones only every 15 s. Device info once a minute (admin only). */
     private suspend fun poll() = coroutineScope {
         val now = System.currentTimeMillis()
-        _s.value.devices.filter { it.online || now - (lastTry[it.base] ?: 0L) >= 15_000L }.map { d -> async {
+        _s.value.devices.filter { d -> d.base !in authBlocked && (d.online || now - (lastTry[d.base] ?: 0L) >= 15_000L) }.map { d -> async {
             lastTry[d.base] = now
             lock(d.base).withLock {
                 try {
                     val r = Api.status(d.base)
+                    fails.remove(d.base)
                     var inf: Info? = null
-                    if (now - (infoAt[d.base] ?: 0L) >= 60_000L) { infoAt[d.base] = now; inf = runCatching { Api.info(d.base) }.getOrNull() }
+                    if (Api.roleOf(d.base) != "guest" && now - (infoAt[d.base] ?: 0L) >= 60_000L) {
+                        infoAt[d.base] = now; inf = runCatching { Api.info(d.base) }.getOrNull()
+                    }
                     put(d.base, r, true, null, inf)
                 } catch (e: CancellationException) { throw e }
-                catch (e: ApiAuthException) { put(d.base, null, false, e.message) }
-                catch (e: Exception) { put(d.base, null, false) }
+                catch (e: ApiRateLimitException) { lastTry[d.base] = now + 45_000L; put(d.base, null, false, e.message) }
+                catch (e: ApiAuthException) { authBlocked.add(d.base); put(d.base, null, false, e.message) }
+                catch (e: Exception) {   // a busy controller may miss a poll: only mark it offline after 3 misses in a row
+                    val n = (fails[d.base] ?: 0) + 1; fails[d.base] = n
+                    if (n >= 3) put(d.base, null, false)
+                }
             } } }.awaitAll()
     }
 
     fun setToken(base: String?, token: String) {
         Tokens.set(base, token)
-        if (base == null) lastTry.clear() else lastTry.remove(base)
+        if (base == null) { lastTry.clear(); authBlocked.clear() } else { lastTry.remove(base); authBlocked.remove(base) }
         viewModelScope.launch { poll() }
     }
     /** From a scanned QR: token (and optionally the device it belongs to). */
@@ -160,8 +170,8 @@ class Vm(private val app: Application) : AndroidViewModel(app) {
     private suspend fun doScan(full: Boolean, manual: Boolean) {
         if (_s.value.scanning) return
         _s.update { it.copy(scanning = true) }
-        val known = prefs.getStringSet("known", emptySet())!!.toList()
-        val r = runCatching { Api.scan(app, known, full) { f -> save(f.base); put(f.base, f.relays.takeIf { it.isNotEmpty() }, f.locked == null, f.locked) } }.getOrNull()
+        val known = prefs.getStringSet("known", emptySet())!!.toList().filter { it !in authBlocked }
+        val r = runCatching { Api.scan(app, known, full) { f -> save(f.base); if (f.locked != null && !f.locked.startsWith("Too many")) authBlocked.add(f.base); put(f.base, f.relays.takeIf { it.isNotEmpty() }, f.locked == null, f.locked) } }.getOrNull()
         _s.update { it.copy(scanning = false) }
         if (manual) when (r) {
             Api.ScanResult.COOLDOWN -> say("Scanned moments ago. Try again in a few seconds.")
@@ -173,7 +183,10 @@ class Vm(private val app: Application) : AndroidViewModel(app) {
     fun add(ip: String) {
         val b = ip.trim().let { if (it.startsWith("http")) it else "http://$it" }
         viewModelScope.launch {
-            runCatching { Api.status(b) }.onSuccess { save(b); put(b, it, true) }.onFailure { say("Can't reach $ip") }
+            runCatching { Api.status(b) }.onSuccess { save(b); put(b, it, true) }.onFailure { e ->
+                if (e is ApiAuthException) { save(b); put(b, null, false, e.message); if (e !is ApiRateLimitException) authBlocked.add(b) }
+                else say("Can't reach $ip")
+            }
         }
     }
 

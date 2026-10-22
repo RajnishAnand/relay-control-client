@@ -28,15 +28,15 @@ import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 
-/** QR payload: relay://pair?key=<token>[&host=<ip>]. A bare token (16+ chars) is accepted too. Returns (host, token). */
+/** QR payload: relay://pair?key=<token>[&host=<ip>]. A bare key (8+ chars) is accepted too. Returns (host, token). */
 fun parsePairing(raw: String): Pair<String?, String>? {
     val t = raw.trim()
     if (t.startsWith("relay://pair")) {
         val u = Uri.parse(t)
         val k = u.getQueryParameter("key")?.trim() ?: return null
-        return if (k.length >= 16) u.getQueryParameter("host")?.takeIf { it.isNotBlank() } to k else null
+        return if (k.length >= 8) u.getQueryParameter("host")?.takeIf { it.isNotBlank() } to k else null
     }
-    return if (t.length >= 16 && t.none { it.isWhitespace() }) null to t else null
+    return if (t.length >= 8 && t.none { it.isWhitespace() }) null to t else null
 }
 
 fun pairingUri(base: String?, token: String) =
@@ -71,11 +71,11 @@ fun TokenDialog(base: String?, vm: Vm, close: () -> Unit) {
     var reveal by remember { mutableStateOf(false) }
     var showQr by remember { mutableStateOf(false) }
     var err by remember { mutableStateOf<String?>(null) }
-    val valid = token.trim().length >= 16
+    val valid = token.trim().length >= 8
     AlertDialog(onDismissRequest = close, containerColor = p.bg,
-        title = { Text(if (base == null) "API token (default)" else "API token · ${base.removePrefix("http://")}", color = p.txt) },
+        title = { Text(if (base == null) "Access key (default)" else "Access key · ${base.removePrefix("http://")}", color = p.txt) },
         text = { Column(Modifier.verticalScroll(rememberScrollState()), Arrangement.spacedBy(14.dp)) {
-            OutlinedTextField(token, { token = it.trim(); err = null }, singleLine = true, label = { Text("Token") },
+            OutlinedTextField(token, { token = it.trim(); err = null }, singleLine = true, label = { Text("Access key") },
                 visualTransformation = if (reveal) VisualTransformation.None else PasswordVisualTransformation(),
                 trailingIcon = { Text(if (reveal) "hide" else "show", Modifier.tap { reveal = !reveal }.padding(8.dp), color = p.txt, fontSize = 12.sp) },
                 colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = p.txt, focusedLabelColor = p.txt, cursorColor = p.txt))
@@ -83,12 +83,12 @@ fun TokenDialog(base: String?, vm: Vm, close: () -> Unit) {
                 NeuButton("Scan QR", Modifier.weight(1f), true) {
                     scanQr(ctx, { err = it }) { raw ->
                         val pr = parsePairing(raw)
-                        if (pr == null) err = "That QR code isn't an API token."
+                        if (pr == null) err = "That QR code isn't an access key."
                         else { vm.applyPairing(base, pr.first, pr.second); close() }
                     }
                 }
                 NeuButton(if (showQr) "Hide QR" else "Share QR", Modifier.weight(1f)) {
-                    if (valid) showQr = !showQr else err = "Enter a token of at least 16 characters first."
+                    if (valid) showQr = !showQr else err = "Enter an access key of at least 8 characters first."
                 }
             }
             if (showQr && valid) {
@@ -96,7 +96,7 @@ fun TokenDialog(base: String?, vm: Vm, close: () -> Unit) {
                 Text("Anyone who scans this can control your relays. Show it only to people you trust.", color = Deep, fontSize = 11.sp)
             }
             err?.let { Text(it, color = Deep, fontSize = 12.sp) }
-            Text("Sent as an X-API-Key header over plain HTTP. Save with an empty field to remove the token.", color = p.dim, fontSize = 11.sp)
+            Text("Admin token or guest password. Sent as an X-API-Key header over plain HTTP. Save with an empty field to remove it.", color = p.dim, fontSize = 11.sp)
         } },
         confirmButton = { TextButton({ vm.setToken(base, token); close() }) { Text("Save", color = p.txt) } },
         dismissButton = { TextButton(close) { Text("Cancel", color = p.dim) } })

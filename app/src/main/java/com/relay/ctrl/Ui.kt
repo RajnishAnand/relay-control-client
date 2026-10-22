@@ -94,7 +94,7 @@ fun GripIcon(color: Color, size: Dp = 22.dp) {
 // ---------- switch tile ----------
 
 @Composable
-fun RelayTile(base: String, i: Int, r: Relay, vm: Vm, live: Boolean, reorder: Boolean,
+fun RelayTile(base: String, i: Int, r: Relay, vm: Vm, live: Boolean, reorder: Boolean, canEdit: Boolean,
               onDragStart: () -> Unit, onDrag: (Float) -> Unit, onDragEnd: () -> Unit, modifier: Modifier) {
     val p = LocalPal.current
     val haptic = LocalHapticFeedback.current
@@ -109,7 +109,7 @@ fun RelayTile(base: String, i: Int, r: Relay, vm: Vm, live: Boolean, reorder: Bo
             Row(verticalAlignment = Alignment.Top) {
                 Text(r.name, Modifier.weight(1f, fill = false), color = p.txt, fontSize = 17.sp, fontWeight = FontWeight.Bold,
                     lineHeight = 21.sp, maxLines = 3)
-                if (!reorder) Box(Modifier.tap { cfg = true }.padding(horizontal = 8.dp, vertical = 2.dp)) { DotsIcon(p.dim) }
+                if (!reorder && canEdit) Box(Modifier.tap { cfg = true }.padding(horizontal = 8.dp, vertical = 2.dp)) { DotsIcon(p.dim) }
             }
             Text(if (!live) "Unavailable" else if (r.state) "On" else "Off",
                 color = if (live && r.state) p.accent else p.dim, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
@@ -200,16 +200,16 @@ fun DevicePage(d: Dev, order: List<Int>, vm: Vm, reorder: Boolean, onDone: () ->
         Column(w.neu(22.dp, 6.dp).padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             when {
                 d.locked != null -> {
-                    Text("This controller needs its API token", color = p.txt, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text("This controller needs an access key", color = p.txt, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     Text(d.locked, color = p.dim, fontSize = 12.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         NeuButton("Scan QR", Modifier.weight(1f), true) {
                             scanQr(ctx, { vm.notify(it) }) { raw ->
                                 val pr = parsePairing(raw)
-                                if (pr == null) vm.notify("That QR code isn't an API token.") else vm.applyPairing(d.base, pr.first, pr.second)
+                                if (pr == null) vm.notify("That QR code isn't an access key.") else vm.applyPairing(d.base, pr.first, pr.second)
                             }
                         }
-                        NeuButton("Enter token", Modifier.weight(1f)) { askToken(d.base) }
+                        NeuButton("Enter key", Modifier.weight(1f)) { askToken(d.base) }
                     }
                 }
                 !d.online -> {
@@ -220,7 +220,7 @@ fun DevicePage(d: Dev, order: List<Int>, vm: Vm, reorder: Boolean, onDone: () ->
                 else -> Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("${d.relays.count { it.state }} of ${d.relays.size} on", color = p.txt, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                        Text(d.base.removePrefix("http://"), color = p.dim, fontSize = 12.sp)
+                        Text(d.base.removePrefix("http://") + (if (d.role == "guest") " · Guest access" else ""), color = p.dim, fontSize = 12.sp)
                     }
                     NeuButton("All off") { vm.allOff(d.base) }
                     Spacer(Modifier.width(10.dp))
@@ -243,7 +243,7 @@ fun DevicePage(d: Dev, order: List<Int>, vm: Vm, reorder: Boolean, onDone: () ->
             val r = d.relays.getOrNull(idx) ?: return@forEach
             key(idx) {
                 val isDrag = dragging == idx
-                RelayTile(d.base, idx, r, vm, d.online, reorder,
+                RelayTile(d.base, idx, r, vm, d.online, reorder, d.role == "admin",
                     onDragStart = { dragging = idx; dragY = 0f },
                     onDrag = { dy -> onDrag(idx, dy) },
                     onDragEnd = { endDrag() },
@@ -275,6 +275,8 @@ fun Home(s: Ui, vm: Vm) {
     var appDlg by remember { mutableStateOf(false) }
     var tokenFor by remember { mutableStateOf<String?>(null) }
     var updateFor by remember { mutableStateOf<String?>(null) }
+    var wifiFor by remember { mutableStateOf<String?>(null) }
+    var guestFor by remember { mutableStateOf<String?>(null) }
     var reorderFor by remember { mutableStateOf<String?>(null) }
     var menu by remember { mutableStateOf(false) }
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -294,16 +296,20 @@ fun Home(s: Ui, vm: Vm) {
                 DropdownMenu(menu, { menu = false }, Modifier.background(p.bg)) {
                     MenuItem("Scan network") { menu = false; vm.scan() }
                     MenuItem("Add device by IP…") { menu = false; manual = true }
-                    MenuItem("API token (all devices)…") { menu = false; defTok = true }
+                    MenuItem("Access key (all devices)…") { menu = false; defTok = true }
                     MenuItem(if (s.appUpdate != null) "App updates… (new version)" else "App updates…") { menu = false; appDlg = true }
                     cur?.let { d ->
                         val ip = d.base.removePrefix("http://")
                         HorizontalDivider(color = p.dim.copy(alpha = .3f))
                         if (d.online && d.locked == null) {
                             MenuItem("Reorder switches") { menu = false; reorderFor = d.base }
-                            MenuItem("Firmware & updates…") { menu = false; updateFor = d.base }
+                            if (d.role == "admin") {
+                                MenuItem("Wi-Fi settings…") { menu = false; wifiFor = d.base }
+                                MenuItem("Guest access…") { menu = false; guestFor = d.base }
+                                MenuItem("Firmware & updates…") { menu = false; updateFor = d.base }
+                            }
                         }
-                        MenuItem("Token for $ip…") { menu = false; tokenFor = d.base }
+                        MenuItem("Access key for $ip…") { menu = false; tokenFor = d.base }
                         if (!d.online) MenuItem("Remove $ip") { menu = false; vm.forget(d.base) }
                     }
                 }
@@ -356,6 +362,8 @@ fun Home(s: Ui, vm: Vm) {
     if (appDlg) AppUpdateDialog(s, vm) { appDlg = false }
     tokenFor?.let { b -> TokenDialog(b, vm) { tokenFor = null } }
     updateFor?.let { b -> s.devices.firstOrNull { it.base == b }?.let { d -> UpdateDialog(d, vm) { updateFor = null } } }
+    wifiFor?.let { b -> s.devices.firstOrNull { it.base == b }?.let { d -> WifiDialog(d, vm) { wifiFor = null } } }
+    guestFor?.let { b -> s.devices.firstOrNull { it.base == b }?.let { d -> GuestDialog(d, vm) { guestFor = null } } }
     allOn?.let { b ->
         AlertDialog(onDismissRequest = { allOn = null }, containerColor = p.bg,
             title = { Text("Turn everything on?", color = p.txt) },

@@ -9,13 +9,13 @@ import android.os.Build
 import android.provider.Settings
 import android.widget.Toast
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
-import kotlinx.coroutines.ensureActive
 
 data class AppRelease(val version: String, val tag: String, val notes: String, val pageUrl: String,
                       val apkUrl: String, val apkSize: Long, val sha256: String?)

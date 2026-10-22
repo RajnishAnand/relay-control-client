@@ -35,22 +35,36 @@ fun UpdateDialog(d: Dev, vm: Vm, close: () -> Unit) {
     var st by remember { mutableStateOf<UpdateStatus?>(null) }
     var err by remember { mutableStateOf<String?>(null) }
     var confirm by remember { mutableStateOf(false) }
+    var waitStart by remember { mutableStateOf<Long?>(null) }
+    var seenChecking by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     suspend fun refresh() {
-        try { st = vm.withDevice(d.base) { Api.updateStatus(d.base) }; err = null }
-        catch (e: CancellationException) { throw e }
-        catch (e: Exception) { err = if (st?.state in RESTARTING) "Device is restarting, reconnecting…" else e.message }
+        try {
+            val s = vm.withDevice(d.base) { Api.updateStatus(d.base) }
+            st = s; err = null
+            waitStart?.let { t0 ->
+                val el = System.currentTimeMillis() - t0
+                if (s.state == "checking") seenChecking = true
+                if ((seenChecking && s.state != "checking") || (!seenChecking && el > 8_000) || el > 90_000) { waitStart = null; seenChecking = false }
+            }
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) {
+            val t0 = waitStart
+            // the controller is busy with the check and may not answer for a while: keep waiting up to 90 s
+            err = if (t0 != null && System.currentTimeMillis() - t0 < 90_000) null
+                  else if (st?.state in RESTARTING) "Device is restarting, reconnecting…" else e.message
+        }
     }
     fun act(f: suspend () -> Unit) {
         scope.launch {
             try { vm.withDevice(d.base) { f() }; err = null }
             catch (e: CancellationException) { throw e }
-            catch (e: Exception) { err = e.message }
+            catch (e: Exception) { err = e.message; waitStart = null }
             refresh()
         }
     }
-    LaunchedEffect(Unit) { while (true) { refresh(); delay(if (st?.state in BUSY) 1500L else 5000L) } }
+    LaunchedEffect(Unit) { while (true) { refresh(); delay(if (st?.state in BUSY || waitStart != null) 1500L else 5000L) } }
 
     val shape = RoundedCornerShape(28.dp)
     Dialog(onDismissRequest = close) {
@@ -98,9 +112,15 @@ fun UpdateDialog(d: Dev, vm: Vm, close: () -> Unit) {
                     Spacer(Modifier.height(14.dp))
                     Text(t, color = if (warn) Deep else p.dim, fontSize = 13.sp, lineHeight = 18.sp)
                 }
-                if (s.configured && s.state !in BUSY) {
+                if (waitStart != null || s.state == "checking") {
+                    Spacer(Modifier.height(18.dp))
+                    Text("Checking for updates… this can take up to a minute.", color = p.dim, fontSize = 13.sp)
+                    Spacer(Modifier.height(8.dp))
+                    LinearProgressIndicator(Modifier.fillMaxWidth().height(6.dp), color = p.txt, trackColor = p.lo)
+                }
+                if (s.configured && s.state !in BUSY && waitStart == null) {
                     Spacer(Modifier.height(22.dp))
-                    NeuButton("Check for updates", Modifier.fillMaxWidth()) { act { Api.updateCheck(d.base) } }
+                    NeuButton("Check for updates", Modifier.fillMaxWidth()) { waitStart = System.currentTimeMillis(); seenChecking = false; act { Api.updateCheck(d.base) } }
                     if (s.state == "available") {
                         Spacer(Modifier.height(14.dp))
                         NeuButton("Install ${s.latest}", Modifier.fillMaxWidth(), true) { confirm = true }
